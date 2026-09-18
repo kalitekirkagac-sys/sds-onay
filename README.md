@@ -1,4 +1,4 @@
-# 🏥 SDS SMS ile Onay Sistemi
+# 🏹 SDS SMS ile Onay Sistemi
 
 Aylık sds analiz ve karar metinlerini SMS ile gönderilen token'lı linklerle
 hekimlere ulaştırıp "Okudum, onaylıyorum" onayı toplayan web uygulaması.
@@ -20,7 +20,7 @@ hekimlere ulaştırıp "Okudum, onaylıyorum" onayı toplayan web uygulaması.
 
 ### 2) Projeyi çalıştır (yerel)
 ```bash
-cd kalite-onay
+cd sds-onay
 npm install
 copy .env.local.example .env.local   # (Windows) değerleri doldurun
 npm run dev
