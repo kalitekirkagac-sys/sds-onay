@@ -1,6 +1,6 @@
-# 🏥 Kalite Onay Sistemi
+# 🏥 SDS SMS ile Onay Sistemi
 
-Aylık kalite analiz ve karar metinlerini SMS ile gönderilen token'lı linklerle
+Aylık sds analiz ve karar metinlerini SMS ile gönderilen token'lı linklerle
 hekimlere ulaştırıp "Okudum, onaylıyorum" onayı toplayan web uygulaması.
 
 ## Özellikler
@@ -31,7 +31,7 @@ Tarayıcı: http://localhost:3000 → yönetim şifrenizle giriş yapın.
 1. GitHub'da boş repo aç, bu klasörü yükle:
    ```bash
    git init && git add . && git commit -m "ilk sürüm"
-   git remote add origin https://github.com/KULLANICI/kalite-onay.git
+   git remote add origin https://github.com/KULLANICI/sds-onay.git
    git push -u origin main
    ```
 2. vercel.com → GitHub ile giriş → "Add New Project" → bu repoyu seç.
@@ -40,9 +40,9 @@ Tarayıcı: http://localhost:3000 → yönetim şifrenizle giriş yapın.
 4. Deploy → hazır. Linkler bu adrese göre üretilir.
 
 ## Kullanım Akışı
-1. **Kişiler** sekmesi → hekimleri ekle (Excel'den kopyala-yapıştır destekli).
+1. **Kişiler** sekmesi → komite üyelerini ve hekimleri ekle (Excel'den kopyala-yapıştır destekli).
 2. **İçerikler** → aylık analizi/kararı yaz veya Word'den kopyala → **Yayınla**.
-3. **Link Üretimi** → içeriği seç, son geçerlilik tarihini belirle → **Token Üret** → CSV indir.
+3. **Link Üretimi** → içeriği seç, son geçerlilik tarihini belirle → **Token Üret** → CSV indir->PDF indir kanıtlı.
 4. CSV'deki linkleri kurum SMS programından hekimlere gönder.
 5. **Onay Raporu** → kim onayladı, ne zaman, doğrulama kodu → CSV indir.
 
