@@ -10,10 +10,12 @@ export async function GET(req) {
   if (!oturumDogrula(req)) return yetkiYok();
   const { data, error } = await db()
     .from("people")
-    .select("*")
+    .select("*, groups(ad)")
     .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ hata: error.message }, { status: 500 });
-  return NextResponse.json({ kisiler: data });
+  return NextResponse.json({
+    kisiler: (data || []).map((k) => ({ ...k, grup_adi: k.groups?.ad || null }))
+  });
 }
 
 export async function POST(req) {
@@ -28,7 +30,12 @@ export async function POST(req) {
       .filter(Boolean)
       .map((s) => {
         const parcalar = s.split(/[;,\t]/).map((p) => p.trim());
-        return { ad_soyad: parcalar[0], unvan: parcalar[1] || null, aktif: true };
+        return {
+          ad_soyad: parcalar[0],
+          unvan: parcalar[1] || null,
+          aktif: true,
+          grup_id: body.grup_id || null
+        };
       })
       .filter((k) => k.ad_soyad);
     if (!satirlar.length)
@@ -43,6 +50,7 @@ export async function POST(req) {
   const { error } = await db().from("people").insert({
     ad_soyad: body.ad_soyad.trim(),
     unvan: body.unvan?.trim() || null,
+    grup_id: body.grup_id || null,
     aktif: true
   });
   if (error) return NextResponse.json({ hata: error.message }, { status: 500 });
@@ -51,8 +59,13 @@ export async function POST(req) {
 
 export async function PATCH(req) {
   if (!oturumDogrula(req)) return yetkiYok();
-  const { id, aktif } = await req.json();
-  const { error } = await db().from("people").update({ aktif }).eq("id", id);
+  const { id, aktif, grup_id } = await req.json();
+  const guncelleme = {};
+  if (aktif !== undefined) guncelleme.aktif = aktif;
+  if (grup_id !== undefined) guncelleme.grup_id = grup_id || null; // boş => grupsuz
+  if (!Object.keys(guncelleme).length)
+    return NextResponse.json({ hata: "Güncellenecek alan yok" }, { status: 400 });
+  const { error } = await db().from("people").update(guncelleme).eq("id", id);
   if (error) return NextResponse.json({ hata: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

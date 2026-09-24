@@ -7,7 +7,7 @@ import { oturumDogrula, tokenUret } from "../../../lib/auth";
 export async function POST(req) {
   if (!oturumDogrula(req))
     return NextResponse.json({ hata: "Yetkisiz" }, { status: 401 });
-  const { content_id, son_gecerlilik } = await req.json();
+  const { content_id, son_gecerlilik, gruplar } = await req.json();
 
   const { data: icerik } = await db()
     .from("contents")
@@ -17,10 +17,27 @@ export async function POST(req) {
   if (!icerik)
     return NextResponse.json({ hata: "İçerik bulunamadı" }, { status: 404 });
 
-  const { data: kisiler } = await db()
-    .from("people")
-    .select("id")
-    .eq("aktif", true);
+  // Seçilen gruplardaki aktif kişiler (grup seçilmemişse tüm aktif kişiler)
+  let kisiler = [];
+  if (Array.isArray(gruplar) && gruplar.length) {
+    const grupsuzIsteniyor = gruplar.includes("__grupsuz");
+    const grupIdleri = gruplar.filter((g) => g !== "__grupsuz");
+    let sorgu = db().from("people").select("id, grup_id").eq("aktif", true);
+    if (grupIdleri.length) sorgu = sorgu.in("grup_id", grupIdleri);
+    const { data } = await sorgu;
+    kisiler = data || [];
+    if (grupsuzIsteniyor) {
+      const { data: grupsuz } = await db()
+        .from("people")
+        .select("id, grup_id")
+        .eq("aktif", true)
+        .is("grup_id", null);
+      kisiler = [...kisiler, ...(grupsuz || [])];
+    }
+  } else {
+    const { data } = await db().from("people").select("id, grup_id").eq("aktif", true);
+    kisiler = data || [];
+  }
   const { data: mevcut } = await db()
     .from("tokens")
     .select("person_id")
@@ -42,6 +59,18 @@ export async function POST(req) {
       return NextResponse.json({ hata: error.message }, { status: 500 });
   }
 
+  // Seçili kapsamdaki mevcut tokenların geçerlilik tarihini güncelle
+  if (son_gecerlilik && (mevcut || []).length) {
+    const hedefKisiIdler = new Set(kisiler.map((k) => k.id));
+    if (hedefKisiIdler.size) {
+      await db()
+        .from("tokens")
+        .update({ son_gecerlilik })
+        .eq("content_id", content_id)
+        .in("person_id", [...hedefKisiIdler]);
+    }
+  }
+
   return NextResponse.json({ ok: true, uretilen: eklenecek.length });
 }
 
@@ -57,7 +86,8 @@ export async function GET(req) {
   if (error)
     return NextResponse.json({ hata: error.message }, { status: 500 });
 
-  const taban = process.env.PUBLIC_URL || "";
+  // Sondaki fazladan slash'ları temizle (//onay/ hatasını önler)
+  const taban = (process.env.PUBLIC_URL || "").replace(/\/+$/, "");
   const linkler = (data || []).map((t) => ({
     token: t.token,
     ad_soyad: t.people?.ad_soyad,

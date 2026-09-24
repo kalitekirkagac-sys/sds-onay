@@ -32,6 +32,17 @@ create table if not exists public.tokens (
   created_at timestamptz not null default now()
 );
 
+-- Gruplar (SDS03, SDS04, Komite vb.)
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  ad text not null unique,
+  created_at timestamptz not null default now()
+);
+
+-- Kişilere grup bağlantısı
+alter table public.people
+  add column if not exists grup_id uuid references public.groups(id) on delete set null;
+
 -- Onaylar
 create table if not exists public.approvals (
   id uuid primary key default gen_random_uuid(),
@@ -45,6 +56,7 @@ create table if not exists public.approvals (
 
 -- Güvenlik: Tablolara sadece sunucu (service role) erişebilir.
 alter table public.people    enable row level security;
+alter table public.groups    enable row level security;
 alter table public.contents  enable row level security;
 alter table public.tokens    enable row level security;
 alter table public.approvals enable row level security;

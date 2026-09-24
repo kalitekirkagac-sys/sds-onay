@@ -24,14 +24,20 @@ const bugunSonu = () => {
 
 // ---------- ana bileşen ----------
 export default function AdminApp() {
-  const [sekme, setSekme] = useState("kisiler");
+  const [sekme, setSekme] = useState("icerikler");
   const [kisiler, setKisiler] = useState([]);
+  const [gruplar, setGruplar] = useState([]);
   const [icerikler, setIcerikler] = useState([]);
 
   async function kisileriYukle() {
     const r = await fetch("/api/kisiler");
     const d = await r.json();
     if (d.kisiler) setKisiler(d.kisiler);
+  }
+  async function gruplariYukle() {
+    const r = await fetch("/api/gruplar");
+    const d = await r.json();
+    if (d.gruplar) setGruplar(d.gruplar);
   }
   async function icerikleriYukle() {
     const r = await fetch("/api/icerikler");
@@ -41,8 +47,14 @@ export default function AdminApp() {
 
   useEffect(() => {
     kisileriYukle();
+    gruplariYukle();
     icerikleriYukle();
   }, []);
+
+  function kisiveGrupYenile() {
+    kisileriYukle();
+    gruplariYukle();
+  }
 
   async function cikis() {
     await fetch("/api/cikis", { method: "POST" });
@@ -60,10 +72,10 @@ export default function AdminApp() {
 
       <div className="sekmeler" style={{ marginTop: 16 }}>
         {[
-          ["kisiler", "👥 Kişiler"],
-          ["icerikler", "📝 İçerikler"],
-          ["linkler", "🔗 Link Üretimi"],
-          ["rapor", "📊 Onay Raporu"]
+          ["icerikler", "1️⃣ Yayınlar (İçerikler)"],
+          ["kisiler", "2️⃣ Gruplar ve Kişiler"],
+          ["linkler", "3️⃣ Link Üretimi"],
+          ["rapor", "4️⃣ Onay Raporu"]
         ].map(([k, e]) => (
           <div
             key={k}
@@ -75,33 +87,53 @@ export default function AdminApp() {
         ))}
       </div>
 
-      {sekme === "kisiler" && (
-        <KisilerTab kisiler={kisiler} yenile={kisileriYukle} />
-      )}
       {sekme === "icerikler" && (
         <IceriklerTab icerikler={icerikler} yenile={icerikleriYukle} />
       )}
+      {sekme === "kisiler" && (
+        <KisilerTab
+          kisiler={kisiler}
+          gruplar={gruplar}
+          yenile={kisiveGrupYenile}
+        />
+      )}
       {sekme === "linkler" && (
-        <LinklerTab icerikler={icerikler} yenile={icerikleriYukle} />
+        <LinklerTab icerikler={icerikler} gruplar={gruplar} />
       )}
       {sekme === "rapor" && <RaporTab icerikler={icerikler} />}
     </div>
   );
 }
 
-// ---------- KİŞİLER ----------
-function KisilerTab({ kisiler, yenile }) {
+// ---------- KİŞİLER ve GRUPLAR ----------
+function KisilerTab({ kisiler, gruplar, yenile }) {
   const [ad, setAd] = useState("");
   const [unvan, setUnvan] = useState("");
+  const [grupSecim, setGrupSecim] = useState("");
+  const [yeniGrup, setYeniGrup] = useState("");
   const [toplu, setToplu] = useState("");
+  const [topluGrup, setTopluGrup] = useState("");
   const [mesaj, setMesaj] = useState("");
+
+  async function grupEkle() {
+    if (!yeniGrup.trim()) return;
+    const r = await fetch("/api/gruplar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ad: yeniGrup })
+    });
+    const d = await r.json();
+    if (d.hata) alert(d.hata);
+    setYeniGrup("");
+    yenile();
+  }
 
   async function tekEkle(e) {
     e.preventDefault();
     await fetch("/api/kisiler", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ad_soyad: ad, unvan })
+      body: JSON.stringify({ ad_soyad: ad, unvan, grup_id: grupSecim || null })
     });
     setAd("");
     setUnvan("");
@@ -112,7 +144,7 @@ function KisilerTab({ kisiler, yenile }) {
     const r = await fetch("/api/kisiler", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toplu })
+      body: JSON.stringify({ toplu, grup_id: topluGrup || null })
     });
     const d = await r.json();
     setMesaj(d.eklenen ? `✅ ${d.eklenen} kişi eklendi.` : d.hata || "Hata");
@@ -123,10 +155,67 @@ function KisilerTab({ kisiler, yenile }) {
   return (
     <>
       <div className="kart">
+        <h3>📁 Gruplar</h3>
+        <p style={{ color: "#64748b", fontSize: 13 }}>
+          Örnek: SDS03, SDS04, SDS05 (hekimlere paylaşılan analizler), Komite (karar
+          metinleri)…
+        </p>
+        <div className="satir">
+          <input
+            placeholder="Yeni grup adı (örn. SDS03)"
+            value={yeniGrup}
+            onChange={(e) => setYeniGrup(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), grupEkle())}
+          />
+          <button className="btn" style={{ flex: 0 }} onClick={grupEkle}>
+            Grup Ekle
+          </button>
+        </div>
+        {gruplar.length > 0 && (
+          <table style={{ marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th>Grup</th>
+                <th>Kişi Sayısı</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {gruplar.map((g) => (
+                <tr key={g.id}>
+                  <td><b>{g.ad}</b></td>
+                  <td>{g.kisi_sayisi}</td>
+                  <td>
+                    <button
+                      className="btn kucuk kirmizi"
+                      onClick={async () => {
+                        if (!confirm(`"${g.ad}" grubu silinsin mi? (Kişiler grupsuz kalır)`))
+                          return;
+                        await fetch(`/api/gruplar?id=${g.id}`, { method: "DELETE" });
+                        yenile();
+                      }}
+                    >
+                      Sil
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="kart">
         <h3>➕ Tek Kişi Ekle</h3>
         <form className="satir" onSubmit={tekEkle}>
           <input placeholder="Ad Soyad" value={ad} onChange={(e) => setAd(e.target.value)} />
           <input placeholder="Unvan (örn. Prf. Dr.)" value={unvan} onChange={(e) => setUnvan(e.target.value)} />
+          <select value={grupSecim} onChange={(e) => setGrupSecim(e.target.value)}>
+            <option value="">— Grup seç —</option>
+            {gruplar.map((g) => (
+              <option key={g.id} value={g.id}>{g.ad}</option>
+            ))}
+          </select>
           <button className="btn" style={{ flex: 0 }}>Ekle</button>
         </form>
       </div>
@@ -134,8 +223,16 @@ function KisilerTab({ kisiler, yenile }) {
       <div className="kart">
         <h3>📋 Toplu Ekleme</h3>
         <p style={{ color: "#64748b", fontSize: 13 }}>
-          Her satıra bir kişi: <code>Ad Soyad;Unvan</code> (Excel'den kopyalayabilirsiniz)
+          Her satıra bir kişi: <code>Ad Soyad;Unvan</code> (Excel'den kopyalayabilirsiniz).
+          Aşağıdan grup seçerseniz tümü o gruba eklenir.
         </p>
+        <select value={topluGrup} onChange={(e) => setTopluGrup(e.target.value)}
+          style={{ maxWidth: 260, marginBottom: 8 }}>
+          <option value="">— Grupsuz ekle —</option>
+          {gruplar.map((g) => (
+            <option key={g.id} value={g.id}>{g.ad}</option>
+          ))}
+        </select>
         <textarea rows={5} value={toplu} onChange={(e) => setToplu(e.target.value)}
           placeholder={"Ahmet Yılmaz;Prf. Dr.\nAyşe Demir;Doç. Dr."} />
         <button className="btn" style={{ marginTop: 8 }} onClick={topluEkle}>
@@ -151,6 +248,7 @@ function KisilerTab({ kisiler, yenile }) {
             <tr>
               <th>Ad Soyad</th>
               <th>Unvan</th>
+              <th>Grup</th>
               <th>Durum</th>
               <th>İşlem</th>
             </tr>
@@ -160,6 +258,25 @@ function KisilerTab({ kisiler, yenile }) {
               <tr key={k.id}>
                 <td>{k.ad_soyad}</td>
                 <td>{k.unvan || "-"}</td>
+                <td>
+                  <select
+                    value={k.grup_id || ""}
+                    onChange={async (e) => {
+                      await fetch("/api/kisiler", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: k.id, grup_id: e.target.value || null })
+                      });
+                      yenile();
+                    }}
+                    style={{ minWidth: 120 }}
+                  >
+                    <option value="">Grupsuz</option>
+                    {gruplar.map((g) => (
+                      <option key={g.id} value={g.id}>{g.ad}</option>
+                    ))}
+                  </select>
+                </td>
                 <td>
                   <span className={`durum ${k.aktif ? "onaylandi" : "onaylamadi"}`}>
                     {k.aktif ? "Aktif" : "Pasif"}
@@ -318,9 +435,10 @@ function IceriklerTab({ icerikler, yenile }) {
 }
 
 // ---------- LİNK ÜRETİMİ ----------
-function LinklerTab({ icerikler }) {
+function LinklerTab({ icerikler, gruplar }) {
   const [contentId, setContentId] = useState("");
   const [gecerlilik, setGecerlilik] = useState(bugunSonu());
+  const [seciliGruplar, setSeciliGruplar] = useState({});
   const [linkler, setLinkler] = useState([]);
   const [mesaj, setMesaj] = useState("");
 
@@ -338,15 +456,53 @@ function LinklerTab({ icerikler }) {
   }, [contentId]);
 
   const yayindaOlan = icerikler.filter((c) => c.yayinda);
+  const icerik = icerikler.find((c) => c.id === contentId);
+
+  // SMS metni (kişiye özel)
+  function smsMetni(l) {
+    return (
+      `Sayın ${l.unvan ? l.unvan + " " : ""}${l.ad_soyad},` +
+      ` "${icerik?.baslik || "Aylık Paylaşım"}" konulu içeriğimizi okuyup kontrol etmeniz ve onay vermeniz için` +
+      ` lütfen aşağıdaki bağlantıya tıklayınız:` +
+      `\n${l.link}` +
+      `\n(Onayınız sistemde tarih ve doğrulama kodu ile kayıt altına alınacaktır.)`
+    );
+  }
+
+  function grupToggle(id) {
+    setSeciliGruplar((eski) => ({ ...eski, [id]: !eski[id] }));
+  }
+
+  function hepsiniSec(kontrol) {
+    const yeni = {};
+    gruplar.forEach((g) => (yeni[g.id] = kontrol));
+    yeni["__grupsuz"] = kontrol;
+    setSeciliGruplar(yeni);
+  }
 
   async function uret() {
+    const secilenler = Object.entries(seciliGruplar)
+      .filter(([, secili]) => secili)
+      .map(([id]) => id);
+    if (!secilenler.length) {
+      alert("En az bir grup seçin.");
+      return;
+    }
     const r = await fetch("/api/linkler", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content_id: contentId, son_gecerlilik: gecerlilik })
+      body: JSON.stringify({
+        content_id: contentId,
+        son_gecerlilik: gecerlilik,
+        gruplar: secilenler
+      })
     });
     const d = await r.json();
-    setMesaj(d.uretilen !== undefined ? `✅ ${d.uretilen} yeni link üretildi.` : d.hata);
+    setMesaj(
+      d.uretilen !== undefined
+        ? `✅ ${d.uretilen} yeni link üretildi, geçerlilik tarihi güncellendi.`
+        : d.hata
+    );
     yukle();
   }
 
@@ -356,22 +512,65 @@ function LinklerTab({ icerikler }) {
         <h3>🔗 Toplu Link Üretimi</h3>
         {yayindaOlan.length === 0 ? (
           <p style={{ color: "#dc2626" }}>
-            ⚠️ Önce "İçerikler" sekmesinden bir içeriği yayınlayın.
+            ⚠️ Önce "Yayınlar" sekmesinden bir içeriği yayınlayın.
           </p>
         ) : (
-          <div className="satir">
-            <select value={contentId} onChange={(e) => setContentId(e.target.value)}>
-              <option value="">— İçerik seçin —</option>
-              {yayindaOlan.map((c) => (
-                <option key={c.id} value={c.id}>{c.baslik}</option>
-              ))}
-            </select>
-            <input type="date" value={gecerlilik} onChange={(e) => setGecerlilik(e.target.value)}
-              title="Son geçerlilik tarihi" style={{ maxWidth: 180 }} />
-            <button className="btn" style={{ flex: 0 }} onClick={uret} disabled={!contentId}>
-              Token Üret
-            </button>
-          </div>
+          <>
+            <div className="satir">
+              <select value={contentId} onChange={(e) => setContentId(e.target.value)}>
+                <option value="">— İçerik seçin —</option>
+                {yayindaOlan.map((c) => (
+                  <option key={c.id} value={c.id}>{c.baslik}</option>
+                ))}
+              </select>
+              <input type="date" value={gecerlilik} onChange={(e) => setGecerlilik(e.target.value)}
+                title="Son geçerlilik tarihi" style={{ maxWidth: 180 }} />
+              <button className="btn" style={{ flex: 0 }} onClick={uret} disabled={!contentId}>
+                Token Üret
+              </button>
+            </div>
+
+            {contentId && (
+              <div style={{ marginTop: 14 }}>
+                <div className="satir" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+                  <b style={{ fontSize: 14 }}>🎯 Hangi gruplara paylaşılsın?</b>
+                  <div>
+                    <button className="btn kucuk" onClick={() => hepsiniSec(true)}>Tümünü Seç</button>{" "}
+                    <button className="btn kucuk sari" onClick={() => hepsiniSec(false)}>Temizle</button>
+                  </div>
+                </div>
+                {gruplar.length === 0 ? (
+                  <p style={{ color: "#d97706", fontSize: 14 }}>
+                    ⚠️ Henüz grup yok — "Gruplar ve Kişiler" sekmesinden grup ekleyin.
+                    (Grup seçmezseniz tüm aktif kişilere üretilir.)
+                  </p>
+                ) : (
+                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 15 }}>
+                    {gruplar.map((g) => (
+                      <label key={g.id} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={!!seciliGruplar[g.id]}
+                          onChange={() => grupToggle(g.id)}
+                          style={{ width: 18, height: 18, accentColor: "#1d4ed8" }}
+                        />
+                        {g.ad} ({g.kisi_sayisi})
+                      </label>
+                    ))}
+                    <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={!!seciliGruplar["__grupsuz"]}
+                        onChange={() => grupToggle("__grupsuz")}
+                        style={{ width: 18, height: 18, accentColor: "#1d4ed8" }}
+                      />
+                      Grupsuz kişiler
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
         {mesaj && <p>{mesaj}</p>}
       </div>
@@ -383,9 +582,10 @@ function LinklerTab({ icerikler }) {
             <div>
               <button
                 className="btn kucuk"
-                onClick={() => navigator.clipboard.writeText(linkler.map((l) => `${l.ad_soyad}: ${l.link}`).join("\n"))}
+                onClick={() => navigator.clipboard.writeText(linkler.map((l) => smsMetni(l)).join("\n\n---\n\n"))}
+                title="Her kişi için hazır SMS metni + link"
               >
-                📋 Tümünü Kopyala
+                📋 Tümünü Kopyala (SMS)
               </button>{" "}
               <button
                 className="btn kucuk yesil"
@@ -418,8 +618,13 @@ function LinklerTab({ icerikler }) {
                   <td>{l.ilk_acilis ? new Date(l.ilk_acilis).toLocaleString("tr-TR") : "—"}</td>
                   <td>
                     <button className="btn kucuk"
+                      onClick={() => navigator.clipboard.writeText(smsMetni(l))}
+                      title="Hazır SMS metni + link kopyala">
+                      📩 SMS
+                    </button>{" "}
+                    <button className="btn kucuk sari"
                       onClick={() => navigator.clipboard.writeText(l.link)}>
-                      Kopyala
+                      Link
                     </button>
                   </td>
                 </tr>
