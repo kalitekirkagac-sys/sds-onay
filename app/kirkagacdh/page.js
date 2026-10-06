@@ -45,7 +45,7 @@ export default function PortalSayfasi() {
       <div style={{ position: "sticky", top: "10px", zIndex: 10, background: "#f1f5f9", padding: "8px 0" }}>
         <input
           type="text"
-          placeholder="🔍 Ad veya soyad yazın (Örn: Yazıcı)..."
+          placeholder="🔍 Ad veya soyad yazın..."
           value={arama}
           onChange={(e) => setArama(e.target.value)}
           style={{
