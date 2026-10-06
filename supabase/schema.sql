@@ -1,6 +1,5 @@
 -- =============================================
--- Kalite Onay Sistemi - Supabase Şeması
--- Supabase > SQL Editor'e yapıştırıp çalıştırın
+-- SMS Onay Sistemi - Supabase Şeması (Güncellenmiş)
 -- =============================================
 
 -- Kişiler (hekimler)
@@ -22,6 +21,22 @@ create table if not exists public.contents (
   created_at timestamptz not null default now()
 );
 
+-- Gruplar (SDS03, SDS04, Komite vb.)
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  ad text not null unique,
+  created_at timestamptz not null default now()
+);
+
+-- Çoka-Çok (Many-to-Many) Ara Tablo: Kişiler ve Gruplar
+create table if not exists public.group_members (
+  id uuid primary key default gen_random_uuid(),
+  person_id uuid not null references public.people(id) on delete cascade,
+  group_id uuid not null references public.groups(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (person_id, group_id)
+);
+
 -- Tokenlar (her kişi + her içerik için tekil link)
 create table if not exists public.tokens (
   token text primary key,
@@ -31,17 +46,6 @@ create table if not exists public.tokens (
   ilk_acilis timestamptz,
   created_at timestamptz not null default now()
 );
-
--- Gruplar (SDS03, SDS04, Komite vb.)
-create table if not exists public.groups (
-  id uuid primary key default gen_random_uuid(),
-  ad text not null unique,
-  created_at timestamptz not null default now()
-);
-
--- Kişilere grup bağlantısı
-alter table public.people
-  add column if not exists grup_id uuid references public.groups(id) on delete set null;
 
 -- Onaylar
 create table if not exists public.approvals (
@@ -55,8 +59,9 @@ create table if not exists public.approvals (
 );
 
 -- Güvenlik: Tablolara sadece sunucu (service role) erişebilir.
-alter table public.people    enable row level security;
-alter table public.groups    enable row level security;
-alter table public.contents  enable row level security;
-alter table public.tokens    enable row level security;
-alter table public.approvals enable row level security;
+alter table public.people        enable row level security;
+alter table public.groups        enable row level security;
+alter table public.group_members enable row level security;
+alter table public.contents      enable row level security;
+alter table public.tokens        enable row level security;
+alter table public.approvals     enable row level security;

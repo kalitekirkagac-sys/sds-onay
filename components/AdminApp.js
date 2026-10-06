@@ -109,11 +109,15 @@ export default function AdminApp() {
 function KisilerTab({ kisiler, gruplar, yenile }) {
   const [ad, setAd] = useState("");
   const [unvan, setUnvan] = useState("");
-  const [grupSecim, setGrupSecim] = useState("");
+  const [seciliGrupIdleri, setSeciliGrupIdleri] = useState([]);
   const [yeniGrup, setYeniGrup] = useState("");
   const [toplu, setToplu] = useState("");
-  const [topluGrup, setTopluGrup] = useState("");
+  const [topluGrupIdleri, setTopluGrupIdleri] = useState([]);
   const [mesaj, setMesaj] = useState("");
+
+  // Düzenleme modundaki kişi ID'si ve onun seçili grupları
+  const [duzenlenenKisiId, setDuzenlenenKisiId] = useState(null);
+  const [duzenleGrupIdleri, setDuzenleGrupIdleri] = useState([]);
 
   async function grupEkle() {
     if (!yeniGrup.trim()) return;
@@ -130,25 +134,39 @@ function KisilerTab({ kisiler, gruplar, yenile }) {
 
   async function tekEkle(e) {
     e.preventDefault();
-    await fetch("/api/kisiler", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ad_soyad: ad, unvan, grup_id: grupSecim || null })
-    });
-    setAd("");
-    setUnvan("");
-    yenile();
-  }
-
-  async function topluEkle() {
     const r = await fetch("/api/kisiler", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toplu, grup_id: topluGrup || null })
+      body: JSON.stringify({
+        ad_soyad: ad,
+        unvan,
+        grup_idleri: seciliGrupIdleri
+      })
+    });
+    const d = await r.json();
+    if (d.hata) {
+      alert(d.hata);
+      return;
+    }
+    setAd("");
+    setUnvan("");
+    setSeciliGrupIdleri([]);
+    yenile();
+  }
+
+ async function topluEkle() {
+    const r = await fetch("/api/kisiler", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toplu,
+        grup_idleri: topluGrupIdleri // Çoklu grup ID'lerini buraya ekledik
+      })
     });
     const d = await r.json();
     setMesaj(d.eklenen ? `✅ ${d.eklenen} kişi eklendi.` : d.hata || "Hata");
     setToplu("");
+    setTopluGrupIdleri([]);
     yenile();
   }
 
@@ -189,7 +207,7 @@ function KisilerTab({ kisiler, gruplar, yenile }) {
                     <button
                       className="btn kucuk kirmizi"
                       onClick={async () => {
-                        if (!confirm(`"${g.ad}" grubu silinsin mi? (Kişiler grupsuz kalır)`))
+                        if (!confirm(`"${g.ad}" grubu silinsin mi?`))
                           return;
                         await fetch(`/api/gruplar?id=${g.id}`, { method: "DELETE" });
                         yenile();
@@ -207,16 +225,40 @@ function KisilerTab({ kisiler, gruplar, yenile }) {
 
       <div className="kart">
         <h3>➕ Tek Kişi Ekle</h3>
-        <form className="satir" onSubmit={tekEkle}>
-          <input placeholder="Ad Soyad" value={ad} onChange={(e) => setAd(e.target.value)} />
-          <input placeholder="Unvan (örn. Prf. Dr.)" value={unvan} onChange={(e) => setUnvan(e.target.value)} />
-          <select value={grupSecim} onChange={(e) => setGrupSecim(e.target.value)}>
-            <option value="">— Grup seç —</option>
-            {gruplar.map((g) => (
-              <option key={g.id} value={g.id}>{g.ad}</option>
-            ))}
-          </select>
-          <button className="btn" style={{ flex: 0 }}>Ekle</button>
+        <form onSubmit={tekEkle}>
+          <div className="satir" style={{ marginBottom: 10 }}>
+            <input placeholder="Ad Soyad" value={ad} onChange={(e) => setAd(e.target.value)} required />
+            <input placeholder="Unvan (örn. Prf. Dr.)" value={unvan} onChange={(e) => setUnvan(e.target.value)} />
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Bağlı Olacağı Gruplar:
+            </label>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", padding: "8px", border: "1px solid var(--cizgi)", borderRadius: "8px", background: "#fff" }}>
+              {gruplar.length === 0 ? (
+                <span style={{ fontSize: 13, color: "#64748b" }}>Önce grup eklemelisiniz.</span>
+              ) : (
+                gruplar.map((g) => (
+                  <label key={g.id} style={{ display: "flex", gap: "5px", alignItems: "center", cursor: "pointer", fontSize: "14px" }}>
+                    <input
+                      type="checkbox"
+                      checked={seciliGrupIdleri.includes(g.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSeciliGrupIdleri([...seciliGrupIdleri, g.id]);
+                        } else {
+                          setSeciliGrupIdleri(seciliGrupIdleri.filter((id) => id !== g.id));
+                        }
+                      }}
+                      style={{ width: 16, height: 16, accentColor: "var(--mavi)" }}
+                    />
+                    {g.ad}
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+          <button className="btn">Kişiyi Ekle</button>
         </form>
       </div>
 
@@ -224,15 +266,32 @@ function KisilerTab({ kisiler, gruplar, yenile }) {
         <h3>📋 Toplu Ekleme</h3>
         <p style={{ color: "#64748b", fontSize: 13 }}>
           Her satıra bir kişi: <code>Ad Soyad;Unvan</code> (Excel'den kopyalayabilirsiniz).
-          Aşağıdan grup seçerseniz tümü o gruba eklenir.
+          Aşağıdan birden fazla grup seçerseniz eklenenler o grupların tümüne kaydedilir.
         </p>
-        <select value={topluGrup} onChange={(e) => setTopluGrup(e.target.value)}
-          style={{ maxWidth: 260, marginBottom: 8 }}>
-          <option value="">— Grupsuz ekle —</option>
-          {gruplar.map((g) => (
-            <option key={g.id} value={g.id}>{g.ad}</option>
-          ))}
-        </select>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+            Eklenecek Gruplar:
+          </label>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", padding: "8px", border: "1px solid var(--cizgi)", borderRadius: "8px", background: "#fff" }}>
+            {gruplar.map((g) => (
+              <label key={g.id} style={{ display: "flex", gap: "5px", alignItems: "center", cursor: "pointer", fontSize: "14px" }}>
+                <input
+                  type="checkbox"
+                  checked={topluGrupIdleri.includes(g.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setTopluGrupIdleri([...topluGrupIdleri, g.id]);
+                    } else {
+                      setTopluGrupIdleri(topluGrupIdleri.filter((id) => id !== g.id));
+                    }
+                  }}
+                  style={{ width: 16, height: 16, accentColor: "var(--mavi)" }}
+                />
+                {g.ad}
+              </label>
+            ))}
+          </div>
+        </div>
         <textarea rows={5} value={toplu} onChange={(e) => setToplu(e.target.value)}
           placeholder={"Ahmet Yılmaz;Prf. Dr.\nAyşe Demir;Doç. Dr."} />
         <button className="btn" style={{ marginTop: 8 }} onClick={topluEkle}>
@@ -248,67 +307,114 @@ function KisilerTab({ kisiler, gruplar, yenile }) {
             <tr>
               <th>Ad Soyad</th>
               <th>Unvan</th>
-              <th>Grup</th>
+              <th>Gruplar</th>
               <th>Durum</th>
               <th>İşlem</th>
             </tr>
           </thead>
           <tbody>
-            {kisiler.map((k) => (
-              <tr key={k.id}>
-                <td>{k.ad_soyad}</td>
-                <td>{k.unvan || "-"}</td>
-                <td>
-                  <select
-                    value={k.grup_id || ""}
-                    onChange={async (e) => {
-                      await fetch("/api/kisiler", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: k.id, grup_id: e.target.value || null })
-                      });
-                      yenile();
-                    }}
-                    style={{ minWidth: 120 }}
-                  >
-                    <option value="">Grupsuz</option>
-                    {gruplar.map((g) => (
-                      <option key={g.id} value={g.id}>{g.ad}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <span className={`durum ${k.aktif ? "onaylandi" : "onaylamadi"}`}>
-                    {k.aktif ? "Aktif" : "Pasif"}
-                  </span>
-                </td>
-                <td>
-                  <button
-                    className="btn kucuk sari"
-                    onClick={async () => {
-                      await fetch("/api/kisiler", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: k.id, aktif: !k.aktif })
-                      });
-                      yenile();
-                    }}
-                  >
-                    {k.aktif ? "Pasifleştir" : "Aktifleştir"}
-                  </button>{" "}
-                  <button
-                    className="btn kucuk kirmizi"
-                    onClick={async () => {
-                      if (!confirm(`${k.ad_soyad} silinsin mi?`)) return;
-                      await fetch(`/api/kisiler?id=${k.id}`, { method: "DELETE" });
-                      yenile();
-                    }}
-                  >
-                    Sil
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {kisiler.map((k) => {
+              const isDuzenleniyor = duzenlenenKisiId === k.id;
+              return (
+                <tr key={k.id}>
+                  <td>{k.ad_soyad}</td>
+                  <td>{k.unvan || "-"}</td>
+                  <td>
+                    {isDuzenleniyor ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          {gruplar.map((g) => (
+                            <label key={g.id} style={{ display: "flex", gap: "4px", alignItems: "center", fontSize: "12px", cursor: "pointer" }}>
+                              <input
+                                type="checkbox"
+                                checked={duzenleGrupIdleri.includes(g.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setDuzenleGrupIdleri([...duzenleGrupIdleri, g.id]);
+                                  } else {
+                                    setDuzenleGrupIdleri(duzenleGrupIdleri.filter((id) => id !== g.id));
+                                  }
+                                }}
+                              />
+                              {g.ad}
+                            </label>
+                          ))}
+                        </div>
+                        <div>
+                          <button
+                            className="btn kucuk yesil"
+                            onClick={async () => {
+                              await fetch("/api/kisiler", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ id: k.id, grup_idleri: duzenleGrupIdleri })
+                              });
+                              setDuzenlenenKisiId(null);
+                              yenile();
+                            }}
+                          >
+                            Kaydet
+                          </button>{" "}
+                          <button className="btn kucuk" onClick={() => setDuzenlenenKisiId(null)}>İptal</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                        {k.gruplar && k.gruplar.length > 0 ? (
+                          k.gruplar.map((g) => (
+                            <span key={g.id} style={{ background: "#e2e8f0", padding: "2px 6px", borderRadius: "4px", fontSize: "12px" }}>
+                              {g.ad}
+                            </span>
+                          ))
+                        ) : (
+                          <span style={{ color: "#94a3b8", fontSize: "13px" }}>Grupsuz</span>
+                        )}
+                        <button
+                          className="btn kucuk"
+                          style={{ padding: "2px 6px", fontSize: "11px", marginLeft: "auto" }}
+                          onClick={() => {
+                            setDuzenlenenKisiId(k.id);
+                            setDuzenleGrupIdleri(k.gruplar ? k.gruplar.map((g) => g.id) : []);
+                          }}
+                        >
+                          Düzenle
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`durum ${k.aktif ? "onaylandi" : "onaylamadi"}`}>
+                      {k.aktif ? "Aktif" : "Pasif"}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className="btn kucuk sari"
+                      onClick={async () => {
+                        await fetch("/api/kisiler", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: k.id, aktif: !k.aktif })
+                        });
+                        yenile();
+                      }}
+                    >
+                      {k.aktif ? "Pasifleştir" : "Aktifleştir"}
+                    </button>{" "}
+                    <button
+                      className="btn kucuk kirmizi"
+                      onClick={async () => {
+                        if (!confirm(`${k.ad_soyad} silinsin mi?`)) return;
+                        await fetch(`/api/kisiler?id=${k.id}`, { method: "DELETE" });
+                        yenile();
+                      }}
+                    >
+                      Sil
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -318,7 +424,7 @@ function KisilerTab({ kisiler, gruplar, yenile }) {
 
 // ---------- İÇERİKLER ----------
 function IceriklerTab({ icerikler, yenile }) {
-  const [secili, setSecili] = useState(null); // düzenlenen içerik
+  const [secili, setSecili] = useState(null);
   const [baslik, setBaslik] = useState("");
   const [donem, setDonem] = useState("");
   const [html, setHtml] = useState("");
@@ -458,7 +564,6 @@ function LinklerTab({ icerikler, gruplar }) {
   const yayindaOlan = icerikler.filter((c) => c.yayinda);
   const icerik = icerikler.find((c) => c.id === contentId);
 
-  // SMS metni (kişiye özel)
   function smsMetni(l) {
     return (
       `Sayın ${l.unvan ? l.unvan + " " : ""}${l.ad_soyad},` +
@@ -542,7 +647,6 @@ function LinklerTab({ icerikler, gruplar }) {
                 {gruplar.length === 0 ? (
                   <p style={{ color: "#d97706", fontSize: 14 }}>
                     ⚠️ Henüz grup yok — "Gruplar ve Kişiler" sekmesinden grup ekleyin.
-                    (Grup seçmezseniz tüm aktif kişilere üretilir.)
                   </p>
                 ) : (
                   <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 15 }}>
@@ -580,10 +684,28 @@ function LinklerTab({ icerikler, gruplar }) {
           <div className="satir" style={{ justifyContent: "space-between" }}>
             <h3 style={{ margin: 0 }}>SMS Linkleri ({linkler.length})</h3>
             <div>
+			<button
+                className="btn kucuk kirmizi"
+                style={{ marginRight: 8 }}
+                onClick={async () => {
+                  if (!confirm("⚠️ Bu içerik için üretilmiş TÜM linkler (tokenler) silinecek. Emin misiniz?")) return;
+                  const r = await fetch(`/api/linkler?content_id=${contentId}`, {
+                    method: "DELETE"
+                  });
+                  const d = await r.json();
+                  if (d.ok) {
+                    setLinkler([]);
+                    alert("✅ Tüm linkler başarıyla silindi.");
+                  } else {
+                    alert(d.hata || "Bir hata oluştu");
+                  }
+                }}
+              >
+                🗑️ Tüm Linkleri Sil
+              </button>
               <button
                 className="btn kucuk"
                 onClick={() => navigator.clipboard.writeText(linkler.map((l) => smsMetni(l)).join("\n\n---\n\n"))}
-                title="Her kişi için hazır SMS metni + link"
               >
                 📋 Tümünü Kopyala (SMS)
               </button>{" "}
@@ -618,8 +740,7 @@ function LinklerTab({ icerikler, gruplar }) {
                   <td>{l.ilk_acilis ? new Date(l.ilk_acilis).toLocaleString("tr-TR") : "—"}</td>
                   <td>
                     <button className="btn kucuk"
-                      onClick={() => navigator.clipboard.writeText(smsMetni(l))}
-                      title="Hazır SMS metni + link kopyala">
+                      onClick={() => navigator.clipboard.writeText(smsMetni(l))}>
                       📩 SMS
                     </button>{" "}
                     <button className="btn kucuk sari"

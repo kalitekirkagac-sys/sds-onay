@@ -3,10 +3,10 @@ import { db } from "../../../lib/db";
 import { oturumDogrula, tokenUret } from "../../../lib/auth";
 
 // Seçili içerik için tüm aktif kişilere link (token) üretir.
-// Halihazırda token'ı olanlar için yeni üretmez.
 export async function POST(req) {
   if (!oturumDogrula(req))
     return NextResponse.json({ hata: "Yetkisiz" }, { status: 401 });
+  
   const { content_id, son_gecerlilik, gruplar } = await req.json();
 
   const { data: icerik } = await db()
@@ -14,30 +14,62 @@ export async function POST(req) {
     .select("id, yayinda")
     .eq("id", content_id)
     .single();
+    
   if (!icerik)
     return NextResponse.json({ hata: "İçerik bulunamadı" }, { status: 404 });
 
-  // Seçilen gruplardaki aktif kişiler (grup seçilmemişse tüm aktif kişiler)
   let kisiler = [];
+
   if (Array.isArray(gruplar) && gruplar.length) {
     const grupsuzIsteniyor = gruplar.includes("__grupsuz");
     const grupIdleri = gruplar.filter((g) => g !== "__grupsuz");
-    let sorgu = db().from("people").select("id, grup_id").eq("aktif", true);
-    if (grupIdleri.length) sorgu = sorgu.in("grup_id", grupIdleri);
-    const { data } = await sorgu;
-    kisiler = data || [];
+
+    let hedefKisiIdSet = new Set();
+
+    // 1. Seçilen gruplara ait kişileri ara tablodan bul
+    if (grupIdleri.length) {
+      const { data: grupUyeleri } = await db()
+        .from("group_members")
+        .select("person_id, people(id, aktif)")
+        .in("group_id", grupIdleri);
+
+      if (grupUyeleri) {
+        grupUyeleri.forEach((gm) => {
+          if (gm.people && gm.people.aktif) {
+            hedefKisiIdSet.add(gm.people.id);
+          }
+        });
+      }
+    }
+
+    // 2. Grupsuzlar isteniyorsa hiç bir grupta olmayan aktif kişileri bul
     if (grupsuzIsteniyor) {
-      const { data: grupsuz } = await db()
+      // Tüm aktif kişileri alıp herhangi bir grupta kaydı olmayanları filtreleyeceğiz
+      const { data: tumAktif } = await db().from("people").select("id").eq("aktif", true);
+      const { data: tumUyeler } = await db().from("group_members").select("person_id");
+      
+      const grupluIdler = new Set((tumUyeler || []).map((u) => u.person_id));
+      (tumAktif || []).forEach((k) => {
+        if (!grupluIdler.has(k.id)) {
+          hedefKisiIdSet.add(k.id);
+        }
+      });
+    }
+
+    if (hedefKisiIdSet.size > 0) {
+      const { data: bulunanKisiler } = await db()
         .from("people")
-        .select("id, grup_id")
-        .eq("aktif", true)
-        .is("grup_id", null);
-      kisiler = [...kisiler, ...(grupsuz || [])];
+        .select("id")
+        .in("id", [...hedefKisiIdSet])
+        .eq("aktif", true);
+      kisiler = bulunanKisiler || [];
     }
   } else {
-    const { data } = await db().from("people").select("id, grup_id").eq("aktif", true);
+    // Hiç grup filtresi seçilmediyse tüm aktif kişileri al
+    const { data } = await db().from("people").select("id").eq("aktif", true);
     kisiler = data || [];
   }
+
   const { data: mevcut } = await db()
     .from("tokens")
     .select("person_id")
@@ -78,15 +110,16 @@ export async function POST(req) {
 export async function GET(req) {
   if (!oturumDogrula(req))
     return NextResponse.json({ hata: "Yetkisiz" }, { status: 401 });
+  
   const content_id = new URL(req.url).searchParams.get("content_id");
   const { data, error } = await db()
     .from("tokens")
     .select("token, son_gecerlilik, ilk_acilis, people(ad_soyad, unvan, aktif)")
     .eq("content_id", content_id);
+
   if (error)
     return NextResponse.json({ hata: error.message }, { status: 500 });
 
-  // Sondaki fazladan slash'ları temizle (//onay/ hatasını önler)
   const taban = (process.env.PUBLIC_URL || "").replace(/\/+$/, "");
   const linkler = (data || []).map((t) => ({
     token: t.token,
@@ -97,5 +130,28 @@ export async function GET(req) {
     ilk_acilis: t.ilk_acilis,
     link: `${taban}/onay/${t.token}`
   }));
+  
   return NextResponse.json({ linkler });
+}
+
+// Belirli bir içeriğe ait tüm tokenleri (ve ilişkili onayları) siler
+export async function DELETE(req) {
+  if (!oturumDogrula(req))
+    return NextResponse.json({ hata: "Yetkisiz" }, { status: 401 });
+
+  const content_id = new URL(req.url).searchParams.get("content_id");
+  if (!content_id)
+    return NextResponse.json({ hata: "İçerik ID gerekli" }, { status: 400 });
+
+  // tokens tablosundan bu içeriğe ait tokenleri sil
+  // Not: Şemanızda approvals tablosu tokens'a bağlıysa veya cascade tanımlıysa silinecektir.
+  const { error } = await db()
+    .from("tokens")
+    .delete()
+    .eq("content_id", content_id);
+
+  if (error)
+    return NextResponse.json({ hata: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
 }
